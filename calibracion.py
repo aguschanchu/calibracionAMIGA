@@ -47,6 +47,16 @@ def ajustar_erf(datos,graficar=False):
 	for l in indices:
 		if y[l] > 0.2*max(y):
 			indicesf.append(l)
+			#Necesitamos calcular el valor de DAC10 de la linea de base. Para ello, almacenamos el valor del pico 0, que corresponde a la bajada de la linea de base
+	bajada_base=indicesf[0]
+	#Para buscar el otro indice, multiplicamos por -1, y volvemos a correr peakutils. Asi, indentificamos el pico de subida de la linea de base
+	indices = peakutils.indexes(-y,min_dist=len(y_data)//25,thres=0.9)
+	indicesfb=[]
+	for l in indices:
+		if -y[l] > 0.9*max(-y):
+			indicesfb.append(l)
+	subida_base=indicesfb[0]
+
 	#Buscamos el ancho de la bajada de 1SPE. La razon por la cual busco el ancho en torno al primer pico, es que el primero,
 	#corresponde a la 'bajada' del rectangulo del ruido
 	cotainf=indicesf[1]
@@ -86,6 +96,17 @@ def ajustar_erf(datos,graficar=False):
 				symbol='cross'
 			),
 			name='Picos'
+			))
+		trazas.append(go.Scatter(
+			x=[x_data[j] for j in [bajada_base,subida_base]],
+			y=[y_data[j] for j in [bajada_base,subida_base]],
+			mode='markers',
+			marker=dict(
+				size=8,
+				color='rgb(200,200,0)',
+				symbol='cross'
+			),
+			name='Picos identificacion linea de base'
 			))
 		trazas.append(go.Scatter(
 			x=[x_data[cotainf],x_data[cotasup]],
@@ -205,7 +226,7 @@ def convertir_indice(k):
 
 #layout = go.Layout(width=1920,height=1080)
 
-data_dir="/home/agus/Dropbox/Exactas/ITeDA/Scripts/AMIGA/Calibracion/data/"
+data_dir="./data/"
 #Estos numeros salen de la medicion realizada
 HV_BASE=32525
 HV_STEP=55
@@ -215,7 +236,7 @@ descartados=0
 trazasgcalib=[]
 v_br={}
 #Iteramos sobre el numero de SiPM
-for k in range(0,64):
+for k in range(1,2):
 	#Iteramos sobre el paso de la barrida de HV
 	##Guardamos el grafico de Cuentas(NivelDeDisc) en caso que querramos verlo
 	trazasg=[]
@@ -257,10 +278,10 @@ for k in range(0,64):
 
 
 	#Descomenta para graficar Cuentas(NivelDeDisc)
-	'''
+
 	layout = go.Layout(yaxis=dict(type='log',autorange=True),width=1920,height=1080)
 	plotly.offline.plot(go.Figure(data=trazasg,layout=layout))
-	'''
+
 
 
 #Descomenta para graficar ValorDeDAC1SPE(HV)
@@ -271,6 +292,7 @@ layout = go.Layout(
 		)
 plotly.offline.plot(go.Figure(data=trazasgcalib,layout=layout))
 '''
+
 #Filtramos canales recortamos
 for j in v_br.keys():
 	if abs(v_br[j]-np.mean(list(v_br.values())))>4*np.std(list(v_br.values())):
@@ -280,7 +302,12 @@ for j in v_br.keys():
 
 #Descomenta para graficar un histograma de V_br
 '''
-data = [go.Histogram(x=[j for j in list(v_br.values()) if j>0])]
+data = [go.Histogram(x=[j for j in list(v_br.values()) if j>0],
+xbins=dict(
+        start=min(v_br.values()),
+        end=max(v_br.values()),
+        size=(max(v_br.values())-min(v_br.values()))/100
+    ))]
 plotly.offline.plot(data)
 '''
 
