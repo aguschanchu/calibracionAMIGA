@@ -47,15 +47,20 @@ def ajustar_erf(datos,graficar=False):
 	for l in indices:
 		if y[l] > 0.2*max(y):
 			indicesf.append(l)
-			#Necesitamos calcular el valor de DAC10 de la linea de base. Para ello, almacenamos el valor del pico 0, que corresponde a la bajada de la linea de base
-	bajada_base=indicesf[0]
-	#Para buscar el otro indice, multiplicamos por -1, y volvemos a correr peakutils. Asi, indentificamos el pico de subida de la linea de base
-	indices = peakutils.indexes(-y,min_dist=len(y_data)//25,thres=0.9)
-	indicesfb=[]
-	for l in indices:
-		if -y[l] > 0.9*max(-y):
-			indicesfb.append(l)
-	subida_base=indicesfb[0]
+
+	#Vamos a necesitar tambien buscar el valor de DAC10 de la linea de base. Para ello, me fijo cuando y cae por debajo de la mitad
+	bajada_base=y_data.index(max(y_data))
+	subida_base=y_data.index(max(y_data))
+	thres=0.1*max(y_data)
+	try:
+		while y_data[subida_base]>thres:
+			subida_base+=1
+		while y_data[bajada_base]>thres:
+			bajada_base-=1
+	except:
+		print("Error al buscar ancho linea de base")
+		return False
+	indice10_linea_de_base = (x_data[subida_base] + x_data[bajada_base])/2
 
 	#Buscamos el ancho de la bajada de 1SPE. La razon por la cual busco el ancho en torno al primer pico, es que el primero,
 	#corresponde a la 'bajada' del rectangulo del ruido
@@ -103,10 +108,10 @@ def ajustar_erf(datos,graficar=False):
 			mode='markers',
 			marker=dict(
 				size=8,
-				color='rgb(200,200,0)',
+				color='rgb(250,250,250)',
 				symbol='cross'
 			),
-			name='Picos identificacion linea de base'
+			name='Exteremos linea de base'
 			))
 		trazas.append(go.Scatter(
 			x=[x_data[cotainf],x_data[cotasup]],
@@ -151,9 +156,9 @@ def ajustar_erf(datos,graficar=False):
 			line = dict(color = ('rgb(0, 250, 0)')),
 			name='Ajuste erf'
 			))
-		return params,extras,trazas
+		return params,extras,trazas,indice10_linea_de_base
 	else:
-		return params,extras
+		return params,extras,indice10_linea_de_base
 
 
 def savitzky_golay(y, window_size, order, deriv=0, rate=1):
@@ -236,7 +241,7 @@ descartados=0
 trazasgcalib=[]
 v_br={}
 #Iteramos sobre el numero de SiPM
-for k in range(1,2):
+for k in range(0,64):
 	#Iteramos sobre el paso de la barrida de HV
 	##Guardamos el grafico de Cuentas(NivelDeDisc) en caso que querramos verlo
 	trazasg=[]
@@ -252,10 +257,10 @@ for k in range(1,2):
 			#Ejecutamos la rutina de ajuste
 			res=ajustar_erf(datos,True)
 			if res!=False:
-				params,extras,trazas=res
+				params,extras,trazas,linea_de_base=res
 				for traza in trazas:
 					trazasg.append(traza)
-				curva_calib[(HV_BASE-j*HV_STEP)*0.001812]=params[2]
+				curva_calib[(HV_BASE-j*HV_STEP)*0.001812]=params[2]-linea_de_base
 			else:
 				descartados+=1
 	#Una vez con la curva de PeakSPE(HV), realizamos un ajuste lineal para obtener el voltaje de Breakdown
@@ -278,24 +283,24 @@ for k in range(1,2):
 
 
 	#Descomenta para graficar Cuentas(NivelDeDisc)
-
+	'''
 	layout = go.Layout(yaxis=dict(type='log',autorange=True),width=1920,height=1080)
 	plotly.offline.plot(go.Figure(data=trazasg,layout=layout))
-
+	'''
 
 
 #Descomenta para graficar ValorDeDAC1SPE(HV)
-'''
+
 layout = go.Layout(
 		xaxis=dict(title='HV (V)'),
 		yaxis=dict(title='Pico 1SPE (CuentasDAC10)'),width=1920,height=1080
 		)
 plotly.offline.plot(go.Figure(data=trazasgcalib,layout=layout))
-'''
+
 
 #Filtramos canales recortamos
 for j in v_br.keys():
-	if abs(v_br[j]-np.mean(list(v_br.values())))>4*np.std(list(v_br.values())):
+	if abs(v_br[j]-np.mean(list(v_br.values())))>2*np.std(list(v_br.values())):
 		v_br[j]=-1
 		print("CANAL FALLADO "+str(j))
 
@@ -310,9 +315,16 @@ xbins=dict(
     ))]
 plotly.offline.plot(data)
 '''
+#Antes de continuar, necesitamos elevar el voltaje al punto de operacion, que es V_br+3,5
+v_op={}
+for i in v_br.keys():
+	v_op[i]=v_br[i]+3.5
 
 #El valor de HV_seteamos en la fuente, va a ser el maximo. Ya que, desde ahí, bajamos con el DAC de 8bits
-HV_fuente=max(v_br.values())
+HV_fuente=max(v_op.values())
+for k in range(0,64):
+	with open('vbr.txt','a') as file:
+		file.write(str(convertir_indice(k))+','+str(k)+','+str(v_br[k])+'\n')
 #Escribimos la configuracion de los CITIROC
 with open('salida.txt','w') as salida:
 	salida.write("Voltaje de BR maximo "+str(HV_fuente)+'\n')
@@ -325,7 +337,7 @@ with open('salida.txt','w') as salida:
 				if convertir_indice(s)==(p,l):
 					break
 			#Tenemos que reducir el voltaje en
-			v_diff=HV_fuente-v_br[s]
+			v_diff=HV_fuente-v_op[s]
 			#Que tenemos que pasarla a unidades de DAC
 			dacunit=240-round(v_diff*(256/2.5))
 			if dacunit<0:
