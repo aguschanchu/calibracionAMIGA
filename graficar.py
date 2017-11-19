@@ -6,13 +6,14 @@ import plotly.graph_objs as go
 from plotly.tools import FigureFactory as FF
 import pandas as pd
 import scipy
-data_dir="./"
+data_dir="./data/"
 
 #Grafica los datos del canal k
 
 trazas=[]
-for k in range(0,64):
-    with open('br_calibrado,'r') as data:
+k=1
+for t in range(10,42,2):
+    with open(data_dir+'br_calib_'+str(t),'r') as data:
         reader = csv.reader(data)
         cuentas = []
         dacVal = []
@@ -22,12 +23,13 @@ for k in range(0,64):
         trazas.append(go.Scatter(
         x=dacVal,
         y=cuentas,
-        mode='line'
+        mode='line',
+	name='Canal '+str(k)+' temp '+str(t)
         ))
         #plt.semilogy(dacVal,cuentas)
 
-#layout = go.Layout(yaxis=dict(type='log',autorange=True),width=1920,height=1080)
-layout = go.Layout(yaxis=dict(type='log',autorange=True))
+layout = go.Layout(width=1920,height=1080,xaxis=dict(title='Valor de comparacion DAC10'),yaxis=dict(title='Cuentas',type='log',autorange=True))
+#layout = go.Layout(yaxis=dict(type='log',autorange=True))
 fig = go.Figure(data=trazas, layout=layout)
 plotly.offline.plot(fig)
 #plt.show()
