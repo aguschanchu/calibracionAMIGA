@@ -344,3 +344,52 @@ with open('salida.txt','w') as salida:
 				dacunit=240
 			salida.write("Input 8-bit DAC"+str(l)+"="+str(int(dacunit))+";"+'\n')
 			salida.write("Input 8-bit DAC"+str(l)+"_ON=1;"+'\n')
+
+
+
+#Filtramos canales recortamos
+for j in v_br.keys():
+	if abs(v_br[j]-np.mean(list(v_br.values())))>2*np.std(list(v_br.values())):
+		v_br[j]=-1
+		print("CANAL FALLADO "+str(j))
+
+
+#Descomenta para graficar un histograma de V_br
+'''
+data = [go.Histogram(x=[j for j in list(v_br.values()) if j>0],
+xbins=dict(
+        start=min(v_br.values()),
+        end=max(v_br.values()),
+        size=(max(v_br.values())-min(v_br.values()))/100
+    ))]
+plotly.offline.plot(data)
+'''
+#Antes de continuar, necesitamos elevar el voltaje al punto de operacion, que es V_br+3,5
+v_op={}
+for i in v_br.keys():
+	v_op[i]=v_br[i]+3.5
+
+#El valor de HV_seteamos en la fuente, va a ser el maximo. Ya que, desde ahí, bajamos con el DAC de 8bits
+HV_fuente=max(v_op.values())
+for k in range(0,64):
+	with open('vbr.txt','a') as file:
+		file.write(str(convertir_indice(k))+','+str(k)+','+str(v_br[k])+'\n')
+#Escribimos la configuracion de los CITIROC
+with open('salida.txt','w') as salida:
+	salida.write("Voltaje de BR maximo "+str(HV_fuente)+'\n')
+	salida.write("En unidades de hamamatsu "+str(HV_fuente/0.001812)+'\n')
+	for p in range(1,3):
+		salida.write("/*CITIROC "+str(p)+" CONF*/"+'\n')
+		for l in range(0,32):
+			#A que indice se corresponde?
+			for s in range(0,63):
+				if convertir_indice(s)==(p,l):
+					break
+			#Tenemos que reducir el voltaje en
+			v_diff=HV_fuente-v_op[s]
+			#Que tenemos que pasarla a unidades de DAC
+			dacunit=240-round(v_diff*(256/2.5))
+			if dacunit<0:
+				dacunit=240
+			salida.write("Input 8-bit DAC"+str(l)+"="+str(int(dacunit))+";"+'\n')
+			salida.write("Input 8-bit DAC"+str(l)+"_ON=1;"+'\n')
