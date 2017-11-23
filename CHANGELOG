@@ -1,0 +1,6 @@
+Se agregaron en calibracion_temperatura, dos nuevos controles para obtener mejores ajustes:
+1) Se implementó un control de R^2, descartando el ajuste de erf si este no es bueno
+2) A la hora de hacer un ajuste lineal, se implementó un algoritmo que cambie dinámicamente la ventana
+de integración, para hacer un buen ajuste lieneal (en términos de R^2). Esto permite descartar los puntos
+de baja ganancia, donde el algoritmo empieza a calcular el pico de 2spe en lugar de 1spe. Esto último no puede
+corregirse (ver figuras), y por ello, los descartamos con el método anterior.
