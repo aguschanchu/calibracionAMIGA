@@ -4,3 +4,11 @@ Se agregaron en calibracion_temperatura, dos nuevos controles para obtener mejor
 de integración, para hacer un buen ajuste lieneal (en términos de R^2). Esto permite descartar los puntos
 de baja ganancia, donde el algoritmo empieza a calcular el pico de 2spe en lugar de 1spe. Esto último no puede
 corregirse (ver figuras), y por ello, los descartamos con el método anterior.
+
+Se agrego calibracion_temperatura_corta
+Consiste en un nuevo método para determinar la calibracion en temperatura. A partir de los datos ya medidos,
+obtener la curva de calibración en temperatura mediante dos ajustes: Uno, a una temperatura constante,
+barriendo HV, obtienemos PeakSPE(HV). Ya con ese ajuste lineal utilizamos un barrido en temperaturas
+(a HV fijo) para obtener PeakSPE(T). Componiendo con la inversa de la anterior, obtendríamos una curva de calibración.
+Este método es distinto del anterior, ya que, antes, para cada temperatura, hicimos un barrido en HV
+para determinar el voltaje de ruptura (que fue la medición super larga).
