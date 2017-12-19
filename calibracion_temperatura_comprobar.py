@@ -258,7 +258,7 @@ def convertir_indice(k):
 	return i,j
 
 #layout = go.Layout(width=1920,height=1080)
-data_dir="/home/agus/Dropbox/Exactas/ITeDA/AMIGA/Barrido en temperaturas sin correccion HV/Corrida4/"
+data_dir="/home/agus/Dropbox/Exactas/ITeDA/AMIGA/Barrido en temperaturas con correccion HV/"
 
 #data_dir="../../../AMIGA/Barrido en temperaturas sin correccion HV/Corrida4/"
 #Estos numeros salen de la medicion realizada
@@ -274,11 +274,10 @@ descartados=0
 ##V[t][k]=Voltaje de breakdown del canal k a temperatura t
 v_br_temp={}
 trazasgcalib=[]
-for t in ['NOS','HMM']:
-
+for k in range(0,1):
 	v_br={}
 	#Iteramos sobre el numero de SiPM
-	for k in range(0,64):
+	for t in ['Corrida2/','Corrida1/']:
 		#Iteramos sobre el paso de la barrida de HV
 		##Guardamos el grafico de Cuentas(NivelDeDisc) en caso que querramos verlo
 		trazasg=[]
@@ -286,7 +285,7 @@ for t in ['NOS','HMM']:
 		curva_calib={}
 		for j in range(temperatura_inicial,temperatura_final+paso_temperatura,paso_temperatura):
 			try:
-				with open(data_dir+'br_calib_'+t+'_'+str(j),'r') as data:
+				with open(data_dir+t+'br_calib_NOS_'+str(j),'r') as data:
 					reader = csv.reader(data)
 					datos= {}
 					for ResComparador in reader:
@@ -306,25 +305,60 @@ for t in ['NOS','HMM']:
 					else:
 						descartados+=1
 			except:
-				pass
-		if t=='NOS':
+				traceback.print_exc()
+		if t=='Corrida2/':
 			c = 'rgb(204, 0, 0)'
+			name = 'Calibración corta'
 		else:
 			c = 'rgb(0, 204, 0)'
+			name = 'Calibración larga'
 
 		trazasgcalib.append(go.Scatter(
 				x=list(curva_calib.keys()),
 				y=list(curva_calib.values()),
 				mode = 'lines+markers',
-				name = 'SiPM '+str(t),
+				name = name,
 				line = dict(color = c)
 				))
 
-		#Descomenta para graficar Cuentas(NivelDeDisc)
-		'''
-		layout = go.Layout(yaxis=dict(type='log',autorange=True),width=1920,height=1080)
-		plotly.offline.plot(go.Figure(data=trazasg,layout=layout))
-		'''
+	for j in range(temperatura_inicial,temperatura_final+paso_temperatura,paso_temperatura):
+		try:
+			with open('/home/agus/Dropbox/Exactas/ITeDA/AMIGA/Barrido en temperaturas sin correccion HV/Corrida2/'+'br_calib_'+str(j),'r') as data:
+				reader = csv.reader(data)
+				datos= {}
+				for ResComparador in reader:
+					#Importamos la escalera de esta configuracion en el formato usual
+					datos[float(ResComparador[0])]=float(ResComparador[k+1])/10**6
+				#Ejecutamos la rutina de ajuste
+				try:
+					res=ajustar_erf(datos,True,False)
+				except:
+					traceback.print_exc()
+					res=False
+				if res!=False:
+					params,extras,trazas,linea_de_base=res
+					for traza in trazas:
+						trazasg.append(traza)
+					curva_calib[j]=params[2]-linea_de_base
+				else:
+					descartados+=1
+		except:
+			pass
+
+	trazasgcalib=trazasgcalib[:-1]
+	trazasgcalib.append(go.Scatter(
+			x=list(curva_calib.keys()),
+			y=list(curva_calib.values()),
+			mode = 'lines+markers',
+			name = 'Sin calibrar',
+			line = dict(color = 'rgb(0, 204, 204)')
+			))
+
+	#Descomenta para graficar Cuentas(NivelDeDisc)
+	'''
+	layout = go.Layout(yaxis=dict(type='log',autorange=True),width=1920,height=1080)
+	plotly.offline.plot(go.Figure(data=trazasg,layout=layout))
+	'''
 
 	#Filtramos canales recortamos
 	for j in v_br.keys():
@@ -332,13 +366,10 @@ for t in ['NOS','HMM']:
 			v_br[j]=-1
 			print("CANAL FALLADO "+str(j))
 
-	#Almacenamos los datos para esta temperatura
-	v_br_temp[t]=v_br
-	print(t)
 
-	#Descomenta para graficar ValorDeDAC1SPE(HV)
 
-	layout = go.Layout(
+
+layout = go.Layout(
 			xaxis=dict(title='Temperatura (°C)',titlefont=dict(
             size=24,
             color='#000000'

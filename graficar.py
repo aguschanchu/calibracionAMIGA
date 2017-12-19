@@ -6,29 +6,45 @@ import plotly.graph_objs as go
 from plotly.tools import FigureFactory as FF
 import pandas as pd
 import scipy
-data_dir="/home/agus/Dropbox/Exactas/ITeDA/AMIGA/Barrido en temperaturas sin correccion HV/Corrida3/"
+data_dir="C:/Users/Agustin/Dropbox/Exactas/ITeDA/AMIGA/Barrido en temperaturas con correccion HV/Corrida2/"
 
 #Grafica los datos del canal k
 
 trazas=[]
-k=55
-for t in range(0,20,1):
-    with open(data_dir+'br_calib_T50_V'+str(t),'r') as data:
-        reader = csv.reader(data)
-        cuentas = []
-        dacVal = []
-        for ResComparador in reader:
-            cuentas.append(float(ResComparador[k+1]))
-            dacVal.append(float(ResComparador[0]))
-        trazas.append(go.Scatter(
-        x=dacVal,
-        y=cuentas,
-        mode='line',
-	name='Canal '+str(k)+' voltaje '+str(t)
-        ))
-        #plt.semilogy(dacVal,cuentas)
+for k in range(0,64):
+	for t in range(0,1,1):
+	    with open(data_dir+'br_calib_NOS_24','r') as data:
+	        reader = csv.reader(data)
+	        cuentas = []
+	        dacVal = []
+	        for ResComparador in reader:
+	            cuentas.append(float(ResComparador[k+1])/60)
+	            dacVal.append(float(ResComparador[0]))
+	        trazas.append(go.Scatter(
+	        x=dacVal,
+	        y=cuentas,
+	        mode='line',
+		name='Canal '+str(k)))
+	        #plt.semilogy(dacVal,cuentas)
 
-layout = go.Layout(width=1920,height=1080,xaxis=dict(title='Valor de comparacion DAC10'),yaxis=dict(title='Cuentas',type='log',autorange=True))
+layout = go.Layout(
+			xaxis=dict(title='Valor de comparacion DAC10',titlefont=dict(
+            size=30,
+            color='#000000'
+        ),tickfont=dict(
+            size=24,
+            color='black'
+        )
+		),
+			yaxis=dict(title='Cuentas [Hz]',titlefont=dict(
+            size=30,
+            color='#000000'),
+			type='log'
+        ,tickfont=dict(
+            size=24,
+            color='black'
+        ))
+			)
 #layout = go.Layout(yaxis=dict(type='log',autorange=True))
 fig = go.Figure(data=trazas, layout=layout)
 plotly.offline.plot(fig)
