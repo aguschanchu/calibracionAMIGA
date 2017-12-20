@@ -10,13 +10,14 @@ from scipy.optimize import curve_fit
 import time
 import warnings
 from scipy.optimize import OptimizeWarning
+from scipy.stats import linregress
 import peakutils
 
 
 def erfunc(x, a, b, c, d):
     return a*erf(b*(x-c))+d
 
-def ajustar_erf(datos,graficar=False):
+def ajustar_erf(datos,graficar=False,debug=True):
 	'''
 	Dado un diccionario con el formato {dacVal:cuentas}, ajusta una erf a la bajada de 1SPE y devuelve los parametros del ajuste.
 	El mismo, lo hace mediante la siguiente rutina:
@@ -30,13 +31,17 @@ def ajustar_erf(datos,graficar=False):
 	x_data=list(datos.keys())
 	y_data=list(datos.values())
 
+	#plt.semilogy(x_data,y_data)
+	#plt.show()
+
 	#Antes de comenzar el paso 1, recortamos los ultimos datos, para evitar tener ceros
 	#La razon, es que el cuentapicos trabaja en escala logaritmica (para hacer mas facil la busqueda de picos)
-	i=0
-	while y_data[i] != 0 and i < len(y_data)-1:
-		i+=1
-	y_data=y_data[0:i]
-	x_data=x_data[0:i]
+	x_data=[i for i in x_data if y_data[x_data.index(i)]>0]
+	y_data=[i for i in y_data if i>0]
+	if len(y_data)<20:
+		print("Unicamente hay linea de base")
+		return False
+
 
 	#Comenzamos con el paso 1
 	y=savitzky_golay(-np.log(np.asarray(y_data)), window_size=7, order=2,deriv=1)
@@ -51,7 +56,7 @@ def ajustar_erf(datos,graficar=False):
 	#Vamos a necesitar tambien buscar el valor de DAC10 de la linea de base. Para ello, me fijo cuando y cae por debajo de la mitad
 	bajada_base=y_data.index(max(y_data))
 	subida_base=y_data.index(max(y_data))
-	thres=0.1*max(y_data)
+	thres=0.2*max(y_data)
 	try:
 		while y_data[subida_base]>thres:
 			subida_base+=1
@@ -59,28 +64,39 @@ def ajustar_erf(datos,graficar=False):
 			bajada_base-=1
 	except:
 		print("Error al buscar ancho linea de base")
+		if debug:
+			plt.semilogy(x_data,y_data)
+			plt.show()
 		return False
 	indice10_linea_de_base = (x_data[subida_base] + x_data[bajada_base])/2
 
 	#Buscamos el ancho de la bajada de 1SPE. La razon por la cual busco el ancho en torno al primer pico, es que el primero,
 	#corresponde a la 'bajada' del rectangulo del ruido
-	cotainf=indicesf[1]
-	cotasup=indicesf[1]
-	thres=0.1*max(y)
+
+	##Busco los de inflexion contiguos al pico, correspondientes al doblamiento en el Plateua
+	indicesl = peakutils.indexes(-y,min_dist=len(y_data)//25,thres=0.1)
 	try:
-		while y[cotasup]>thres:
-			cotasup+=1
-		while y[cotainf]>thres:
-			cotainf-=1
+		for j in range(0,len(indicesl)):
+			if indicesl[j] < indicesf[1] and indicesl[j+1] > indicesf[1]:
+				cotasup=indicesl[j+1]
+				cotainf=indicesl[j]
+				break
 	except:
-		print("Error al buscar ancho")
+		print("Error al buscar ancho linea de base")
+		if debug:
+			plt.semilogy(x_data,y_data)
+			plt.show()
+			plt.plot(x_data,-y)
+			plt.plot([x_data[j] for j in indicesl],[-y_data[j] for j in indicesl])
+			plt.show()
 		return False
+
 	#Una vez hallados los anchos, los abrimos un poco mas
-	cotainf=cotainf-6
-	cotasup=cotasup+6
+	cotainf=cotainf-4
+	cotasup=cotasup+4
 	#Encontramos algunos casos donde el tamaño de la meseta entre ruido y 1SPE era muy pequeña, lo que hacia que la
 	#deteccion de anchos sea erronea. Por ello, imponemos los siguientes limites:
-	if cotainf <= indicesf[0]:
+	if cotainf <= indicesf[0]+3:
 		cotainf=indicesf[0]+3
 
 	if graficar:
@@ -137,10 +153,18 @@ def ajustar_erf(datos,graficar=False):
 		warnings.simplefilter("error", OptimizeWarning)
 		try:
 			params, extras = curve_fit(erfunc, x_data, y_data, p0,ftol=1.49012e-14, xtol=1.49012e-14, maxfev=10**8)
-			if abs(np.mean(extras)) > 1:
-				#La matriz de covarianza de los paramatros es muy grande, de modo que posiblemente fallo el fiteo
-				if graficar:
-					return False
+			#Es bueno el fiteo? Calculemos r^2
+			residuals = y_data - erfunc(x_data, *params)
+			ss_res = np.sum(residuals**2)
+			r_squared = 1 - ss_res/np.sum((y_data-np.mean(y_data))**2)
+			if r_squared < 0.95:
+				print("Fiteo malo")
+				print(r_squared)
+				if debug:
+					plt.semilogy(x_data,y_data)
+					plt.semilogy(x_data,erfunc(x_data, *params))
+					plt.show()
+				return False
 		except OptimizeWarning:
 			print("Error en fiteo")
 			return False
@@ -229,9 +253,10 @@ def convertir_indice(k):
 	j=orden_orig[(k//4)%2][((k//4)//2)*4+k%4]
 	return i,j
 
-#layout = go.Layout(width=1920,height=1080)
-
 data_dir="./data/"
+data_dir="C:/Users/Agustin/Dropbox/Exactas/ITeDA/AMIGA/Calibracion DAC8 con centelladores/"
+#data_dir="C:/Users/Agustin/Dropbox/Exactas/ITeDA/AMIGA/Calibracion DAC8/data/"
+
 #Estos numeros salen de la medicion realizada
 HV_BASE=32525
 HV_STEP=55
@@ -255,7 +280,11 @@ for k in range(0,64):
 				#Importamos la escalera de esta configuracion en el formato usual
 				datos[float(ResComparador[0])]=float(ResComparador[k+1])/10**6
 			#Ejecutamos la rutina de ajuste
-			res=ajustar_erf(datos,True)
+			try:
+				res=ajustar_erf(datos,True,False)
+			except:
+				traceback.print_exc()
+				res=False
 			if res!=False:
 				params,extras,trazas,linea_de_base=res
 				for traza in trazas:
@@ -263,40 +292,46 @@ for k in range(0,64):
 				curva_calib[(HV_BASE-j*HV_STEP)*0.001812]=params[2]-linea_de_base
 			else:
 				descartados+=1
+
 	#Una vez con la curva de PeakSPE(HV), realizamos un ajuste lineal para obtener el voltaje de Breakdown
-	linfit = np.polyfit(np.asarray(list(curva_calib.keys())),np.asarray(list(curva_calib.values())),1)
-	p = np.poly1d(linfit)
+	##A partir de un punto, donde la ganancia es muy baja, empieza a flashear. Busquemos ese punto, y, recortemos en caso de ser necesario
+	##Por tal motivo,vamos recortando puntos de la "cola" hasta obtener un ajuste decente, o bien, no tener más puntos
+	curva_calib_sin_filtrar=curva_calib.copy()
+	for hv in sorted(list(curva_calib.keys())):
+		slope, intercept, r_value, p_value, std_err = linregress(list(curva_calib.keys()),np.asarray(list(curva_calib.values())))
+		#Obtuve un ajuste decente? Si no es así, lo descarto y pruebo removiendo otro punto
+		if r_value < 0.95:
+			del curva_calib[hv]
+		else:
+			break
+		if len(curva_calib)<6:
+			#No pudimos ajustar
+			print("Error al hacer el ajuste lineal. No pudimos encontrar una ventana adecuada")
+			slope, intercept, r_value, p_value = (0,0,0,0)
+			break
+
+	p = lambda x: slope*x+intercept
 	trazasgcalib.append(go.Scatter(
-			x=list(curva_calib.keys()),
-			y=list(curva_calib.values()),
+			x=list(curva_calib_sin_filtrar.keys()),
+			y=list(curva_calib_sin_filtrar.values()),
 			mode = 'lines+markers',
 			name = 'SiPM '+str(k)
 			))
 	trazasgcalib.append(go.Scatter(
-			x=list(curva_calib.keys()),
-			y=p(np.asarray(list(curva_calib.keys()))),
+			x=list(curva_calib_sin_filtrar.keys()),
+			y=p(np.asarray(list(curva_calib_sin_filtrar.keys()))),
 			mode = 'lines',
 			name = 'SiPM ajuste'+str(k),
 			))
 	#Almacenamos V_br en un diccionario
-	v_br[k]=-linfit[1]/linfit[0]
-
+	if r_value > 0.9:
+		v_br[k]=-intercept/slope
 
 	#Descomenta para graficar Cuentas(NivelDeDisc)
 	'''
 	layout = go.Layout(yaxis=dict(type='log',autorange=True),width=1920,height=1080)
 	plotly.offline.plot(go.Figure(data=trazasg,layout=layout))
 	'''
-
-
-#Descomenta para graficar ValorDeDAC1SPE(HV)
-
-layout = go.Layout(
-		xaxis=dict(title='HV (V)'),
-		yaxis=dict(title='Pico 1SPE (CuentasDAC10)'),width=1920,height=1080
-		)
-plotly.offline.plot(go.Figure(data=trazasgcalib,layout=layout))
-
 
 #Filtramos canales recortamos
 for j in v_br.keys():
@@ -305,8 +340,18 @@ for j in v_br.keys():
 		print("CANAL FALLADO "+str(j))
 
 
-#Descomenta para graficar un histograma de V_br
+#Descomenta para graficar ValorDeDAC1SPE(HV)
 '''
+layout = go.Layout(
+		xaxis=dict(title='HV (V)'),
+		yaxis=dict(title='Pico 1SPE (CuentasDAC10)'),width=1920,height=1080
+		)
+plotly.offline.plot(go.Figure(data=trazasgcalib,layout=layout))
+'''
+
+#Descomenta para graficar un histograma de V_br
+
+time.sleep(1)
 data = [go.Histogram(x=[j for j in list(v_br.values()) if j>0],
 xbins=dict(
         start=min(v_br.values()),
@@ -314,7 +359,8 @@ xbins=dict(
         size=(max(v_br.values())-min(v_br.values()))/100
     ))]
 plotly.offline.plot(data)
-'''
+
+
 #Antes de continuar, necesitamos elevar el voltaje al punto de operacion, que es V_br+3,5
 v_op={}
 for i in v_br.keys():
@@ -355,7 +401,8 @@ for j in v_br.keys():
 
 
 #Descomenta para graficar un histograma de V_br
-'''
+
+data=[]
 data = [go.Histogram(x=[j for j in list(v_br.values()) if j>0],
 xbins=dict(
         start=min(v_br.values()),
@@ -363,7 +410,7 @@ xbins=dict(
         size=(max(v_br.values())-min(v_br.values()))/100
     ))]
 plotly.offline.plot(data)
-'''
+
 #Antes de continuar, necesitamos elevar el voltaje al punto de operacion, que es V_br+3,5
 v_op={}
 for i in v_br.keys():
