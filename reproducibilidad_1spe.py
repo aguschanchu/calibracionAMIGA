@@ -253,29 +253,25 @@ def convertir_indice(k):
 	j=orden_orig[(k//4)%2][((k//4)//2)*4+k%4]
 	return i,j
 
-data_dir="./data/"
-#data_dir="/home/agus/Dropbox/Exactas/ITeDA/AMIGA/Calibracion DAC8/data/"
-data_dir="/home/agus/Dropbox/Exactas/ITeDA/AMIGA/Barrido en temperaturas sin correccion HV/Corrida3/"
-
+data_dir="C:/Users/Agustin/Dropbox/Exactas/ITeDA/AMIGA/Temperatura fija caracterizacion 1SPE/"
 #data_dir="C:/Users/Agustin/Dropbox/Exactas/ITeDA/AMIGA/Calibracion DAC8/data/"
 
-#Estos numeros salen de la medicion realizada
-HV_BASE=32525
-HV_STEP=55
-cantidad_de_pasos=34
+cantidad_de_pasos=100
 
 descartados=0
 trazasgcalib=[]
+picos=[]
 v_br={}
 #Iteramos sobre el numero de SiPM
 for k in range(0,64):
+	picos.append([])
 	#Iteramos sobre el paso de la barrida de HV
 	##Guardamos el grafico de Cuentas(NivelDeDisc) en caso que querramos verlo
 	trazasg=[]
 	##Guardamos ValorDeDAC1SPE(HV)
 	curva_calib={}
 	for j in range(0,cantidad_de_pasos):
-		with open(data_dir+'br_calib_T25_V'+str(j),'r') as data:
+		with open(data_dir+'br_calib_T25_num'+str(j),'r') as data:
 			reader = csv.reader(data)
 			datos= {}
 			for ResComparador in reader:
@@ -291,107 +287,30 @@ for k in range(0,64):
 				params,extras,trazas,linea_de_base=res
 				for traza in trazas:
 					trazasg.append(traza)
-				curva_calib[(HV_BASE-j*HV_STEP)*0.001812]=params[2]-linea_de_base
+				picos[k].append(params[2]-linea_de_base)
 			else:
 				descartados+=1
-
-	#Una vez con la curva de PeakSPE(HV), realizamos un ajuste lineal para obtener el voltaje de Breakdown
-	##A partir de un punto, donde la ganancia es muy baja, empieza a flashear. Busquemos ese punto, y, recortemos en caso de ser necesario
-	##Por tal motivo,vamos recortando puntos de la "cola" hasta obtener un ajuste decente, o bien, no tener más puntos
-	curva_calib_sin_filtrar=curva_calib.copy()
-	for hv in sorted(list(curva_calib.keys())):
-		slope, intercept, r_value, p_value, std_err = linregress(list(curva_calib.keys()),np.asarray(list(curva_calib.values())))
-		#Obtuve un ajuste decente? Si no es así, lo descarto y pruebo removiendo otro punto
-		if r_value < 0.95:
-			del curva_calib[hv]
-		else:
-			break
-		if len(curva_calib)<6:
-			#No pudimos ajustar
-			print("Error al hacer el ajuste lineal. No pudimos encontrar una ventana adecuada")
-			slope, intercept, r_value, p_value = (0,0,0,0)
-			break
-
-	p = lambda x: slope*x+intercept
-	trazasgcalib.append(go.Scatter(
-			x=list(curva_calib_sin_filtrar.keys()),
-			y=list(curva_calib_sin_filtrar.values()),
-			mode = 'lines+markers',
-			name = 'SiPM '+str(k)
-			))
-	trazasgcalib.append(go.Scatter(
-			x=list(curva_calib_sin_filtrar.keys()),
-			y=p(np.asarray(list(curva_calib_sin_filtrar.keys()))),
-			mode = 'lines',
-			name = 'SiPM ajuste'+str(k),
-			))
-	#Almacenamos V_br en un diccionario
-	if r_value > 0.9:
-		v_br[k]=-intercept/slope
-
 	#Descomenta para graficar Cuentas(NivelDeDisc)
 	'''
 	layout = go.Layout(yaxis=dict(type='log',autorange=True),width=1920,height=1080)
 	plotly.offline.plot(go.Figure(data=trazasg,layout=layout))
 	'''
 
-#Filtramos canales recortamos
-for j in v_br.keys():
-	if abs(v_br[j]-np.mean(list(v_br.values())))>2*np.std(list(v_br.values())):
-		v_br[j]=-1
-		print("CANAL FALLADO "+str(j))
-
-
-#Descomenta para graficar ValorDeDAC1SPE(HV)
-'''
-layout = go.Layout(
-		xaxis=dict(title='HV (V)'),
-		yaxis=dict(title='Pico 1SPE (CuentasDAC10)'),width=1920,height=1080
-		)
-plotly.offline.plot(go.Figure(data=trazasgcalib,layout=layout))
-'''
 
 #Descomenta para graficar un histograma de V_br
-'''
-datal= []
-hist=[j for j in list(v_br.values()) if j>0]
-datal.append(go.Histogram(x=hist,
+data= []
+datos = []
+for k in range(0,1):
+	if k not in [5,6]:
+		for j in picos[k]:
+			datos.append(j)
+data.append(go.Histogram(x=[j for j in list(datos) if j>0],
 xbins=dict(
-        start=min(hist),
-        end=max(hist),
-        size=(max(v_br.values())-min(v_br.values()))/1000
-    )))
-
+        start=22.5,
+        end=27.5,
+		size=(max(datos)-min(datos))/50),
+	    opacity=0.75,
+		histnorm='probability'
+    ))
 layout = go.Layout(barmode='stack')
-plotly.offline.plot(go.Figure(data=datal, layout=layout))
-print(len(datal))
-'''
-#Antes de continuar, necesitamos elevar el voltaje al punto de operacion, que es V_br+3,5
-v_op={}
-for i in v_br.keys():
-	v_op[i]=v_br[i]+3.5
-
-#El valor de HV_seteamos en la fuente, va a ser el maximo. Ya que, desde ahí, bajamos con el DAC de 8bits
-HV_fuente=max(v_op.values())
-for k in range(0,64):
-	with open('vbr.txt','a') as file:
-		file.write(str(convertir_indice(k))+','+str(k)+','+str(v_br[k])+'\n')
-#Escribimos la configuracion de los CITIROC
-with open('salida.txt','w') as salida:
-	salida.write("Voltaje de BR maximo "+str(HV_fuente)+'\n')
-	salida.write("En unidades de hamamatsu "+str(HV_fuente/0.001812)+'\n')
-	for p in range(1,3):
-		salida.write("/*CITIROC "+str(p)+" CONF*/"+'\n')
-		for l in range(0,32):
-			#A que indice se corresponde?
-			for s in range(0,63):
-				if convertir_indice(s)==(p,l):
-					break
-			#Tenemos que reducir el voltaje en
-			v_diff=HV_fuente-v_op[s]
-			#Que tenemos que pasarla a unidades de DAC
-			dacunit=240-round(v_diff*(256/2.5))
-			if dacunit<0:
-				dacunit=240
-			salida.write("Input 8-bit DAC"+str(l)+"="+str(int(dacunit))+";"+'\n')
-			salida.write("Input 8-bit DAC"+str(l)+"_ON=1;"+'\n')
+plotly.offline.plot(go.Figure(data=data, layout=layout))
